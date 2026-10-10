@@ -1,0 +1,14 @@
+{
+  "name": "할일 알람",
+  "short_name": "할일알람",
+  "description": "울릴 때 할일이 화면 가득 크게 보이는 알람",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

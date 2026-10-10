@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#111111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>할일 알람</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #111;
+    --card: #1e1e1e;
+    --text: #f5f5f5;
+    --muted: #9a9a9a;
+    --accent: #ffcc00;
+    --danger: #ff4d4d;
+    --ok: #2ecc71;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  body { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+  button { font: inherit; border: 0; cursor: pointer; }
+
+  /* ---------- 목록 화면 ---------- */
+  header { display: flex; align-items: center; justify-content: space-between; padding: 20px 0 8px; }
+  header h1 { margin: 0; font-size: 28px; }
+  #clock { font-size: 64px; font-weight: 800; text-align: center; margin: 12px 0 4px; font-variant-numeric: tabular-nums; }
+  #today { text-align: center; color: var(--muted); margin-bottom: 20px; }
+  #warn { background: #3a2a00; color: var(--accent); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.5; margin-bottom: 16px; }
+  #warn button { background: var(--accent); color: #000; border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-weight: 700; }
+  .alarm { background: var(--card); border-radius: 18px; padding: 16px 18px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 14px; }
+  .alarm.off { opacity: .45; }
+  .alarm .info { flex: 1; min-width: 0; }
+  .alarm .time { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .alarm .todo { font-size: 20px; font-weight: 700; margin-top: 6px; color: var(--accent);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alarm .days { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .switch { width: 58px; height: 34px; border-radius: 17px; background: #444; position: relative; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; border-radius: 50%;
+    background: #fff; transition: left .15s; }
+  .switch.on { background: var(--ok); }
+  .switch.on::after { left: 27px; }
+  #empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 18px; }
+  #addBtn { position: fixed; right: 20px; bottom: calc(24px + env(safe-area-inset-bottom)); width: 72px; height: 72px;
+    border-radius: 50%; background: var(--accent); color: #000; font-size: 44px; font-weight: 700;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+  #list { padding-bottom: 120px; }
+
+  /* ---------- 편집 화면 ---------- */
+  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: flex-end; z-index: 10; }
+  .sheet.show { display: flex; }
+  .sheet .panel { background: var(--card); width: 100%; border-radius: 22px 22px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    max-height: 95vh; overflow-y: auto; }
+  .panel h2 { margin: 0 0 16px; }
+  .panel label { display: block; color: var(--muted); font-size: 14px; margin: 16px 0 6px; }
+  .panel input[type=time] { width: 100%; font-size: 48px; font-weight: 800; background: #000; color: var(--text);
+    border: 2px solid #333; border-radius: 14px; padding: 8px; text-align: center; }
+  .panel textarea { width: 100%; font-size: 24px; font-weight: 700; background: #000; color: var(--accent);
+    border: 2px solid #333; border-radius: 14px; padding: 12px; resize: none; min-height: 100px; font-family: inherit; }
+  .daypick { display: flex; gap: 6px; }
+  .daypick button { flex: 1; height: 46px; border-radius: 12px; background: #000; color: var(--muted); font-weight: 700; border: 2px solid #333; }
+  .daypick button.sel { background: var(--accent); color: #000; border-color: var(--accent); }
+  .row { display: flex; gap: 10px; margin-top: 22px; }
+  .row button { flex: 1; height: 56px; border-radius: 14px; font-size: 18px; font-weight: 700; }
+  .btn-save { background: var(--accent); color: #000; }
+  .btn-cancel { background: #333; color: var(--text); }
+  .btn-del { background: transparent; color: var(--danger); margin-top: 14px; width: 100%; height: 48px; font-weight: 700; }
+  .btn-test { background: transparent; color: var(--muted); width: 100%; height: 44px; text-decoration: underline; }
+
+  /* ---------- 울리는 화면 (핵심) ---------- */
+  #ring { position: fixed; inset: 0; z-index: 100; display: none; flex-direction: column;
+    background: #000; padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    animation: flash 1s infinite; }
+  #ring.show { display: flex; }
+  @keyframes flash { 0%,100% { background: #000; } 50% { background: #3d0000; } }
+  #ringTime { text-align: center; font-size: 34px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #ringLabel { text-align: center; font-size: 22px; font-weight: 800; color: var(--danger); letter-spacing: 4px; margin-top: 4px; }
+  #ringTodoWrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 8px 0; }
+  #ringTodo { color: var(--accent); font-weight: 900; text-align: center; line-height: 1.15;
+    word-break: keep-all; overflow-wrap: anywhere; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+  #ringBtns { display: flex; flex-direction: column; gap: 12px; }
+  #doneBtn { height: 96px; border-radius: 24px; background: var(--ok); color: #000; font-size: 32px; font-weight: 900; }
+  #snoozeBtn { height: 64px; border-radius: 18px; background: #333; color: var(--text); font-size: 22px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>할일 알람</h1>
+</header>
+<div id="clock">--:--</div>
+<div id="today"></div>
+
+<div id="warn">
+  알람이 울리려면 <b>이 화면을 열어둔 채로</b> 두세요. (홈 화면에 추가하면 앱처럼 쓸 수 있어요)<br>
+  소리가 나려면 한 번 눌러서 활성화해야 합니다.
+  <br><button id="unlockBtn">🔔 알람 소리 켜기</button>
+</div>
+
+<div id="list"></div>
+<div id="empty">아직 알람이 없어요.<br>＋ 를 눌러 할일 알람을 추가하세요.</div>
+
+<button id="addBtn" aria-label="알람 추가">＋</button>
+
+<!-- 편집 시트 -->
+<div class="sheet" id="sheet">
+  <div class="panel">
+    <h2 id="sheetTitle">알람 추가</h2>
+    <label for="fTime">시간</label>
+    <input type="time" id="fTime" value="07:00">
+    <label for="fTodo">할일 (알람 화면에 크게 표시돼요)</label>
+    <textarea id="fTodo" maxlength="80" placeholder="예) 약 먹기"></textarea>
+    <label>반복 (선택 안 하면 1회만)</label>
+    <div class="daypick" id="fDays"></div>
+    <div class="row">
+      <button class="btn-cancel" id="cancelBtn">취소</button>
+      <button class="btn-save" id="saveBtn">저장</button>
+    </div>
+    <button class="btn-test" id="testBtn">미리보기 (지금 울려보기)</button>
+    <button class="btn-del" id="delBtn">알람 삭제</button>
+  </div>
+</div>
+
+<!-- 울리는 화면 -->
+<div id="ring">
+  <div id="ringTime">--:--</div>
+  <div id="ringLabel">지금 할 일</div>
+  <div id="ringTodoWrap"><div id="ringTodo"></div></div>
+  <div id="ringBtns">
+    <button id="doneBtn">✔ 완료 · 끄기</button>
+    <button id="snoozeBtn">5분 뒤 다시</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const DAYS = ['일','월','화','수','목','금','토'];
+  const KEY = 'todo-alarms-v1';
+  const SNOOZE_MIN = 5;
+  const $ = id => document.getElementById(id);
+
+  // ---------- 저장소 ----------
+  let alarms = load();
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(alarms)); } catch {}
+  }
+  const pad = n => String(n).padStart(2, '0');
+  const hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  // ---------- 목록 ----------
+  function render() {
+    const list = $('list');
+    list.innerHTML = '';
+    $('empty').style.display = alarms.length ? 'none' : 'block';
+    [...alarms].sort((a, b) => a.time.localeCompare(b.time)).forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'alarm' + (a.on ? '' : ' off');
+      const days = a.days.length === 7 ? '매일' : a.days.length ? a.days.map(d => DAYS[d]).join(' ') : '1회';
+      el.innerHTML = `<div class="info"><div class="time"></div><div class="todo"></div><div class="days"></div></div>
+                      <div class="switch ${a.on ? 'on' : ''}" role="switch"></div>`;
+      el.querySelector('.time').textContent = a.time;
+      el.querySelector('.todo').textContent = a.todo || '(할일 없음)';
+      el.querySelector('.days').textContent = days + (a.snoozeUntil ? ` · ${new Date(a.snoozeUntil).toTimeString().slice(0,5)} 다시 울림` : '');
+      el.querySelector('.switch').onclick = e => {
+        e.stopPropagation();
+        a.on = !a.on; a.snoozeUntil = null; a.lastFired = null;
+        save(); render();
+      };
+      el.onclick = () => openSheet(a);
+      list.appendChild(el);
+    });
+  }
+
+  // ---------- 편집 ----------
+  let editing = null, selDays = [];
+  DAYS.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.textContent = d;
+    b.onclick = () => {
+      selDays = selDays.includes(i) ? selDays.filter(x => x !== i) : [...selDays, i];
+      paintDays();
+    };
+    $('fDays').appendChild(b);
+  });
+  function paintDays() {
+    [...$('fDays').children].forEach((b, i) => b.classList.toggle('sel', selDays.includes(i)));
+  }
+  function openSheet(a) {
+    editing = a || null;
+    $('sheetTitle').textContent = a ? '알람 수정' : '알람 추가';
+    const soon = new Date(Date.now() + 60000);
+    $('fTime').value = a ? a.time : hm(soon);
+    $('fTodo').value = a ? a.todo : '';
+    selDays = a ? [...a.days] : [];
+    paintDays();
+    $('delBtn').style.display = a ? 'block' : 'none';
+    $('sheet').classList.add('show');
+    unlockAudio();
+  }
+  const closeSheet = () => $('sheet').classList.remove('show');
+  $('addBtn').onclick = () => openSheet(null);
+  $('cancelBtn').onclick = closeSheet;
+  $('sheet').onclick = e => { if (e.target === $('sheet')) closeSheet(); };
+  $('saveBtn').onclick = () => {
+    const time = $('fTime').value;
+    if (!time) return;
+    const data = { time, todo: $('fTodo').value.trim(), days: [...selDays].sort(), on: true, lastFired: null, snoozeUntil: null };
+    if (editing) Object.assign(editing, data);
+    else alarms.push({ id: Date.now().toString(36), ...data });
+    save(); render(); closeSheet();
+  };
+  $('delBtn').onclick = () => {
+    if (!editing || !confirm('이 알람을 삭제할까요?')) return;
+    alarms = alarms.filter(a => a !== editing);
+    save(); render(); closeSheet();
+  };
+  $('testBtn').onclick = () => {
+    closeSheet();
+    startRing({ id: '__test', todo: $('fTodo').value.trim() || '할일 미리보기' });
+  };
+
+  // ---------- 소리 / 진동 ----------
+  let ctx = null, beepTimer = null;
+  function unlockAudio() {
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') ctx.resume();
+      // 무음 한 번 재생해서 iOS 오디오 잠금 해제
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      g.gain.value = 0; o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.01);
+    } catch {}
+  }
+  function beepOnce() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [0, 0.18, 0.36].forEach(off => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'square'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t + off);
+      g.gain.exponentialRampToValueAtTime(0.5, t + off + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.14);
+      o.connect(g).connect(ctx.destination);
+      o.start(t + off); o.stop(t + off + 0.15);
+    });
+  }
+  function startSound() {
+    stopSound();
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+    beepOnce();
+    beepTimer = setInterval(() => {
+      beepOnce();
+      if (navigator.vibrate) navigator.vibrate([400, 200, 400]);
+    }, 1000);
+  }
+  function stopSound() {
+    clearInterval(beepTimer); beepTimer = null;
+    if (navigator.vibrate) navigator.vibrate(0);
+  }
+  $('unlockBtn').onclick = () => {
+    unlockAudio(); beepOnce(); requestWakeLock();
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+    $('unlockBtn').textContent = '✔ 소리 켜짐';
+  };
+  document.addEventListener('pointerdown', unlockAudio, { once: true });
+
+  // ---------- 화면 꺼짐 방지 ----------
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try { if ('wakeLock' in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } } catch {}
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { requestWakeLock(); tick(); }
+  });
+
+  // ---------- 울리는 화면 ----------
+  let ringing = null;
+  function fitTodo() {
+    const el = $('ringTodo'), wrap = $('ringTodoWrap');
+    let lo = 20, hi = 400;
+    while (lo < hi) {               // 화면에 꽉 차는 최대 글자 크기 찾기
+      const mid = Math.ceil((lo + hi) / 2);
+      el.style.fontSize = mid + 'px';
+      if (el.scrollWidth <= wrap.clientWidth && el.scrollHeight <= wrap.clientHeight) lo = mid; else hi = mid - 1;
+    }
+    el.style.fontSize = lo + 'px';
+  }
+  function startRing(a) {
+    ringing = a;
+    $('ringTodo').textContent = a.todo || '알람';
+    $('ringTime').textContent = hm(new Date());
+    $('ring').classList.add('show');
+    requestAnimationFrame(fitTodo);
+    startSound();
+    requestWakeLock();
+    if (document.visibilityState !== 'visible' && 'Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('⏰ ' + (a.todo || '알람'), { body: '지금 할 일', requireInteraction: true }); } catch {}
+    }
+  }
+  function stopRing() {
+    stopSound();
+    $('ring').classList.remove('show');
+    ringing = null;
+  }
+  $('doneBtn').onclick = () => {
+    const a = alarms.find(x => x.id === ringing?.id);
+    if (a) { a.snoozeUntil = null; if (!a.days.length) a.on = false; save(); render(); }
+    stopRing();
+  };
+  $('snoozeBtn').onclick = () => {
+    const a = alarms.find(x => x.id === ringing?.id);
+    if (a) { a.snoozeUntil = Date.now() + SNOOZE_MIN * 60000; save(); render(); }
+    stopRing();
+  };
+  window.addEventListener('resize', () => { if (ringing) fitTodo(); });
+
+  // ---------- 시계 / 알람 체크 ----------
+  function tick() {
+    const now = new Date();
+    const t = hm(now);
+    $('clock').textContent = t;
+    $('today').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 ${DAYS[now.getDay()]}요일`;
+    if (ringing) { $('ringTime').textContent = t; return; }
+    const stamp = now.toDateString() + ' ' + t;
+    for (const a of alarms) {
+      if (!a.on) continue;
+      if (a.snoozeUntil && now.getTime() >= a.snoozeUntil) {
+        a.snoozeUntil = null; save(); render(); startRing(a); return;
+      }
+      if (a.time === t && a.lastFired !== stamp && (!a.days.length || a.days.includes(now.getDay()))) {
+        a.lastFired = stamp; save(); startRing(a); return;
+      }
+    }
+  }
+  render();
+  tick();
+  setInterval(tick, 1000);
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
